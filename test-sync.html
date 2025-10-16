@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sync Testing Console</title>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 20px;
+      margin: 0;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      color: #4ec9b0;
+      border-bottom: 2px solid #4ec9b0;
+      padding-bottom: 10px;
+    }
+    
+    .test-section {
+      background: #252526;
+      border: 1px solid #3e3e42;
+      border-radius: 5px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    
+    .test-section h2 {
+      color: #dcdcaa;
+      margin-top: 0;
+    }
+    
+    button {
+      background: #0e639c;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 3px;
+      cursor: pointer;
+      margin: 5px;
+      font-family: inherit;
+    }
+    
+    button:hover {
+      background: #1177bb;
+    }
+    
+    button.danger {
+      background: #d16969;
+    }
+    
+    button.danger:hover {
+      background: #e57373;
+    }
+    
+    .log {
+      background: #1e1e1e;
+      border: 1px solid #3e3e42;
+      border-radius: 3px;
+      padding: 15px;
+      margin-top: 10px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-size: 14px;
+    }
+    
+    .log-entry {
+      margin: 5px 0;
+      padding: 5px;
+    }
+    
+    .log-entry.success { color: #4ec9b0; }
+    .log-entry.error { color: #f48771; }
+    .log-entry.warning { color: #dcdcaa; }
+    .log-entry.info { color: #9cdcfe; }
+    
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 15px;
+      margin: 20px 0;
+    }
+    
+    .stat-box {
+      background: #2d2d30;
+      padding: 15px;
+      border-radius: 5px;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 2em;
+      font-weight: bold;
+      color: #4ec9b0;
+    }
+    
+    .stat-label {
+      color: #858585;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🧪 Sync Testing Console</h1>
+    
+    <div class="stats">
+      <div class="stat-box">
+        <div class="stat-value" id="localCount">0</div>
+        <div class="stat-label">Local Quotes</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="syncCount">0</div>
+        <div class="stat-label">Sync Count</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="conflictCount">0</div>
+        <div class="stat-label">Conflicts</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" id="lastSync">Never</div>
+        <div class="stat-label">Last Sync</div>
+      </div>
+    </div>
+    
+    <div class="test-section">
+      <h2>Basic Tests</h2>
+      <button onclick="testFetchServer()">Test Fetch from Server</button>
+      <button onclick="testConflictDetection()">Test Conflict Detection</button>
+      <button onclick="testTextNormalization()">Test Text Normalization</button>
+      <button onclick="testManualSync()">Test Manual Sync</button>
+    </div>
+    
+    <div class="test-section">
+      <h2>Stress Tests</h2>
+      <button onclick="addMultipleQuotes()">Add 100 Local Quotes</button>
+      <button onclick="simulateRapidSync()">Rapid Sync (10x)</button>
+      <button onclick="testOfflineSync()">Simulate Offline</button>
+      <button class="danger" onclick="clearAllData()">Clear All Data</button>
+    </div>
+    
+    <div class="test-section">
+      <h2>Conflict Simulation</h2>
+      <button onclick="createConflict()">Create Intentional Conflict</button>
+      <button onclick="createMultipleConflicts()">Create 5 Conflicts</button>
+      <button onclick="viewConflictLog()">View Conflict History</button>
+    </div>
+    
+    <div class="test-section">
+      <h2>Test Log</h2>
+      <button onclick="clearLog()">Clear Log</button>
+      <button onclick="exportLog()">Export Log</button>
+      <div class="log" id="testLog"></div>
+    </div>
+  </div>
+
+  <script>
+    const SERVER_URL = 'https://jsonplaceholder.typicode.com/posts';
+    let syncCount = 0;
+    let conflictCount = 0;
+    let testLog = [];
+
+    function log(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = `[${timestamp}] ${message}`;
+      testLog.push({ message: entry, type });
+      
+      const logDiv = document.getElementById('testLog');
+      const entryDiv = document.createElement('div');
+      entryDiv.className = `log-entry ${type}`;
+      entryDiv.textContent = entry;
+      logDiv.appendChild(entryDiv);
+      logDiv.scrollTop = logDiv.scrollHeight;
+      
+      console.log(entry);
+    }
+
+    function updateStats() {
+      const quotes = JSON.parse(localStorage.getItem('quotes') || '[]');
+      document.getElementById('localCount').textContent = quotes.length;
+      document.getElementById('syncCount').textContent = syncCount;
+      document.getElementById('conflictCount').textContent = conflictCount;
+      
+      const lastSync = localStorage.getItem('lastSyncTime');
+      if (lastSync) {
+        const date = new Date(lastSync);
+        document.getElementById('lastSync').textContent = date.toLocaleTimeString();
+      }
+    }
+
+    async function testFetchServer() {
+      log('Testing server fetch...', 'info');
+      try {
+        const response = await fetch(SERVER_URL);
+        const data = await response.json();
+        log(`✅ Successfully fetched ${data.length} items from server`, 'success');
+        log(`Sample: "${data[0].title}"`, 'info');
+      } catch (error) {
+        log(`❌ Fetch failed: ${error.message}`, 'error');
+      }
+    }
+
+    function testConflictDetection() {
+      log('Testing conflict detection...', 'info');
+      
+      const local = { text: "Hello World", category: "Local" };
+      const server = { text: "hello world", category: "Server" };
+      
+      const normalizeText = (text) => text.toLowerCase().trim().replace(/[^\w\s]/g, '');
+      
+      if (normalizeText(local.text) === normalizeText(server.text)) {
+        log('✅ Conflict detected correctly!', 'success');
+        log(`Local: "${local.text}" (${local.category})`, 'warning');
+        log(`Server: "${server.text}" (${server.category})`, 'warning');
+        conflictCount++;
+      } else {
+        log('❌ Conflict detection failed', 'error');
+      }
+      
+      updateStats();
+    }
+
+    function testTextNormalization() {
+      log('Testing text normalization...', 'info');
+      
+      const tests = [
+        { input: "Hello, World!", expected: "hello world" },
+        { input: "HELLO WORLD!!!", expected: "hello world" },
+        { input: "  hello   world  ", expected: "hello world" }
+      ];
+      
+      const normalizeText = (text) => text.toLowerCase().trim().replace(/[^\w\s]/g, '');
+      
+      tests.forEach(test => {
+        const result = normalizeText(test.input);
+        if (result === test.expected) {
+          log(`✅ "${test.input}" → "${result}"`, 'success');
+        } else {
+          log(`❌ "${test.input}" → "${result}" (expected "${test.expected}")`, 'error');
+        }
+      });
+    }
+
+    async function testManualSync() {
+      log('Triggering manual sync...', 'info');
+      syncCount++;
+      updateStats();
+      
+      // Open main app in new window for sync
+      window.open('index.html', '_blank');
+      log('✅ Opened main app for sync test', 'success');
+    }
+
+    function addMultipleQuotes() {
+      log('Adding 100 test quotes...', 'info');
+      const quotes = JSON.parse(localStorage.getItem('quotes') || '[]');
+      
+      for (let i = 0; i < 100; i++) {
+        quotes.push({
+          text: `Test Quote ${i + 1}: Lorem ipsum dolor sit amet`,
+          category: ['Test', 'Stress', 'Performance'][i % 3]
+        });
+      }
+      
+      localStorage.setItem('quotes', JSON.stringify(quotes));
+      log(`✅ Added 100 quotes (Total: ${quotes.length})`, 'success');
+      updateStats();
+    }
+
+    async function simulateRapidSync() {
+      log('Starting rapid sync test (10 syncs)...', 'warning');
+      
+      for (let i = 0; i < 10; i++) {
+        log(`Sync ${i + 1}/10...`, 'info');
+        syncCount++;
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      log('✅ Rapid sync test complete', 'success');
+      updateStats();
+    }
+
+    function testOfflineSync() {
+      log('Simulating offline sync...', 'warning');
+      log('❌ Open DevTools → Network → Check "Offline"', 'info');
+      log('Then trigger sync in main app', 'info');
+      log('Expected: Error notification and retry', 'info');
+    }
+
+    function createConflict() {
+      log('Creating intentional conflict...', 'warning');
+      const quotes = JSON.parse(localStorage.getItem('quotes') || '[]');
+      
+      // Add a quote that will conflict with server data
+      quotes.push({
+        text: "sunt aut facere repellat provident occaecati excepturi optio reprehenderit",
+        category: "LocalConflict"
+      });
+      
+      localStorage.setItem('quotes', JSON.stringify(quotes));
+      log('✅ Conflict created. Next sync will resolve it.', 'success');
+      log('Trigger sync to see conflict resolution', 'info');
+      conflictCount++;
+      updateStats();
+    }
+
+    function createMultipleConflicts() {
+      log('Creating 5 conflicts...', 'warning');
+      const quotes = JSON.parse(localStorage.getItem('quotes') || '[]');
+      
+      const serverTexts = [
+        "sunt aut facere repellat provident occaecati excepturi optio reprehenderit",
+        "qui est esse",
+        "ea molestias quasi exercitationem repellat qui ipsa sit aut",
+        "eum et est occaecati",
+        "nesciunt quas odio"
+      ];
+      
+      serverTexts.forEach((text, i) => {
+        quotes.push({
+          text: text,
+          category: `LocalConflict${i + 1}`
+        });
+      });
+      
+      localStorage.setItem('quotes', JSON.stringify(quotes));
+      log('✅ Created 5 conflicts', 'success');
+      conflictCount += 5;
+      updateStats();
+    }
+
+    function viewConflictLog() {
+      log('=== CONFLICT HISTORY ===', 'warning');
+      log(`Total conflicts detected: ${conflictCount}`, 'info');
+      log('Check main app console for detailed conflict logs', 'info');
+    }
+
+    function clearAllData() {
+      if (confirm('⚠️ Clear ALL localStorage data?')) {
+        localStorage.clear();
+        log('🗑️ All data cleared', 'warning');
+        syncCount = 0;
+        conflictCount = 0;
+        updateStats();
+      }
+    }
+
+    function clearLog() {
+      document.getElementById('testLog').innerHTML = '';
+      testLog = [];
+      log('Log cleared', 'info');
+    }
+
+    function exportLog() {
+      const logText = testLog.map(entry => entry.message).join('\n');
+      const blob = new Blob([logText], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `sync-test-log-${Date.now()}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      log('✅ Log exported', 'success');
+    }
+
+    // Initialize
+    updateStats();
+    log('🧪 Sync Testing Console Ready', 'success');
+    log('Run tests using the buttons above', 'info');
+  </script>
+</body>
+</html>

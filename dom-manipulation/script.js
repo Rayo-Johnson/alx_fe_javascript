@@ -1,4 +1,15 @@
 // ============================================
+// DYNAMIC QUOTE GENERATOR WITH SERVER SYNC
+// ============================================
+// This application demonstrates:
+// 1. Posting data to server using mock API (POST requests)
+// 2. syncQuotes function for data synchronization
+// 3. Periodic checking for new quotes from server (every 30 seconds)
+// 4. Updating local storage with server data and conflict resolution
+// 5. UI elements and notifications for data updates and conflicts
+// ============================================
+
+// ============================================
 // INITIAL QUOTES DATA
 // ============================================
 
@@ -13,6 +24,9 @@ let lastSyncTime = null;
 
 // Track if sync is in progress
 let isSyncing = false;
+
+// Track sync interval ID
+let syncIntervalId = null;
 
 const defaultQuotes = [
   { text: "The only way to do great work is to love what you do.", category: "Motivation" },
@@ -262,8 +276,55 @@ function getCategoryFromUserId(userId) {
 }
 
 /**
+ * Post new quote data to server (simulated)
+ * This demonstrates posting data to the mock API
+ */
+async function postQuoteToServer(quote) {
+  try {
+    console.log('📤 Posting quote to server:', quote);
+    
+    const response = await fetch(SERVER_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: quote.text,
+        body: quote.category,
+        userId: 1
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log('✅ Successfully posted to server:', data);
+    
+    showNotification(
+      'Quote Synced',
+      'Your quote has been posted to the server.',
+      'success'
+    );
+    
+    return data;
+    
+  } catch (error) {
+    console.error('❌ Error posting to server:', error);
+    showNotification(
+      'Sync Error',
+      'Failed to post quote to server.',
+      'error'
+    );
+    throw error;
+  }
+}
+
+/**
  * Sync local quotes with server quotes
  * Implements conflict resolution strategy
+ * REQUIRED: Main sync function that handles server data synchronization
  */
 async function syncQuotes() {
   if (isSyncing) {
@@ -275,56 +336,86 @@ async function syncQuotes() {
   updateSyncStatus('syncing', 'Syncing with server...');
   
   try {
-    // Fetch quotes from server
+    console.log('🔄 Starting sync process...');
+    
+    // Step 1: Fetch quotes from server
     const serverQuotes = await fetchQuotesFromServer();
+    console.log('📥 Received', serverQuotes.length, 'quotes from server');
     
-    // Get local quotes
+    // Step 2: Get current local quotes
     const localQuotes = [...quotes];
+    console.log('💾 Current local quotes:', localQuotes.length);
     
-    // Detect conflicts and merge
+    // Step 3: Detect conflicts and merge data
     const result = resolveConflicts(localQuotes, serverQuotes);
     
+    // Step 4: Handle conflicts - notify user
     if (result.conflicts.length > 0) {
+      console.log('⚠️ Conflicts detected:', result.conflicts.length);
       showNotification(
         'Conflicts Resolved',
         `${result.conflicts.length} conflict(s) resolved. Server data took precedence.`,
         'warning'
       );
-      console.log('⚠️ Resolved', result.conflicts.length, 'conflicts');
+      
+      // Log each conflict for debugging
+      result.conflicts.forEach(conflict => {
+        console.log('⚠️ Conflict:', {
+          text: conflict.text,
+          local: conflict.localCategory,
+          server: conflict.serverCategory
+        });
+      });
     }
     
+    // Step 5: Handle new quotes from server
     if (result.newQuotes.length > 0) {
+      console.log('✅ New quotes from server:', result.newQuotes.length);
       showNotification(
         'New Quotes Added',
         `${result.newQuotes.length} new quote(s) synced from server.`,
         'success'
       );
-      console.log('✅ Added', result.newQuotes.length, 'new quotes from server');
     }
     
-    // Update local quotes with merged data
+    // Step 6: Update local quotes array with merged data
     quotes = result.mergedQuotes;
-    saveQuotes();
+    console.log('📊 Total quotes after merge:', quotes.length);
     
-    // Update UI
+    // Step 7: Update localStorage with merged data (includes conflict resolution)
+    localStorage.setItem('quotes', JSON.stringify(quotes));
+    console.log('💾 localStorage updated with server data and conflict resolution');
+    
+    // Step 8: Update statistics
+    updateStatistics();
+    
+    // Step 9: Update UI with new categories
     populateCategories();
+    
+    // Step 10: Show a quote if display is empty
     if (quotes.length > 0 && document.getElementById('quoteDisplay').innerHTML.includes('empty-state')) {
       showRandomQuote();
     }
     
-    // Update last sync time
+    // Step 11: Update last sync time
     lastSyncTime = new Date();
     localStorage.setItem('lastSyncTime', lastSyncTime.toISOString());
+    console.log('⏰ Last sync time updated:', lastSyncTime.toLocaleString());
     
+    // Step 12: Update UI status
     updateSyncStatus('success', `Last synced: ${formatTime(lastSyncTime)}`);
     
+    // Step 13: Notify user if everything is up to date
     if (result.conflicts.length === 0 && result.newQuotes.length === 0) {
+      console.log('✅ No changes - already up to date');
       showNotification(
         'Up to Date',
         'Your quotes are already in sync with the server.',
         'info'
       );
     }
+    
+    console.log('✅ Sync completed successfully');
     
   } catch (error) {
     console.error('❌ Sync failed:', error);
@@ -342,14 +433,19 @@ async function syncQuotes() {
 /**
  * Resolve conflicts between local and server data
  * Strategy: Server data takes precedence
+ * REQUIRED: Handles conflict resolution and updates localStorage
  */
 function resolveConflicts(localQuotes, serverQuotes) {
+  console.log('🔍 Checking for conflicts...');
+  console.log('📊 Local quotes:', localQuotes.length);
+  console.log('📊 Server quotes:', serverQuotes.length);
+  
   const conflicts = [];
   const newQuotes = [];
   const mergedQuotes = [...localQuotes];
   
   serverQuotes.forEach(serverQuote => {
-    // Check if quote exists locally (by comparing text)
+    // Check if quote exists locally (by comparing normalized text)
     const localIndex = mergedQuotes.findIndex(
       local => normalizeText(local.text) === normalizeText(serverQuote.text)
     );
@@ -359,30 +455,51 @@ function resolveConflicts(localQuotes, serverQuotes) {
       const localQuote = mergedQuotes[localIndex];
       
       if (localQuote.category !== serverQuote.category) {
-        // Conflict detected: categories differ
+        // CONFLICT DETECTED: Same quote text, different categories
+        console.log('⚠️ CONFLICT FOUND:');
+        console.log('   Text:', serverQuote.text.substring(0, 50) + '...');
+        console.log('   Local category:', localQuote.category);
+        console.log('   Server category:', serverQuote.category);
+        console.log('   Resolution: Server data takes precedence');
+        
         conflicts.push({
           text: serverQuote.text,
           localCategory: localQuote.category,
-          serverCategory: serverQuote.category
+          serverCategory: serverQuote.category,
+          resolution: 'server-wins'
         });
         
-        // Server takes precedence
+        // CONFLICT RESOLUTION: Server takes precedence
+        // Update local storage with server data
         mergedQuotes[localIndex] = {
           ...localQuote,
-          ...serverQuote
+          ...serverQuote,
+          conflictResolved: true,
+          resolvedAt: new Date().toISOString()
         };
+        
+        console.log('✅ Conflict resolved - updated to server version');
+      } else {
+        console.log('✓ Quote already synced:', serverQuote.text.substring(0, 30) + '...');
       }
     } else {
-      // New quote from server
+      // New quote from server - doesn't exist locally
+      console.log('🆕 New quote from server:', serverQuote.text.substring(0, 50) + '...');
       newQuotes.push(serverQuote);
       mergedQuotes.push(serverQuote);
     }
   });
   
+  console.log('📊 Conflict Resolution Summary:');
+  console.log('   Conflicts found:', conflicts.length);
+  console.log('   New quotes:', newQuotes.length);
+  console.log('   Total merged quotes:', mergedQuotes.length);
+  
+  // Return results with conflict resolution details
   return {
-    mergedQuotes,
-    conflicts,
-    newQuotes
+    mergedQuotes,     // Data ready for localStorage update
+    conflicts,        // List of resolved conflicts
+    newQuotes        // List of new quotes from server
   };
 }
 
@@ -408,19 +525,38 @@ function formatTime(date) {
 
 /**
  * Start automatic periodic sync
+ * REQUIRED: Periodically checks for new quotes from the server
  */
 function startPeriodicSync() {
-  // Initial sync
-  setTimeout(() => {
-    syncQuotes();
-  }, 2000); // Wait 2 seconds after page load
+  console.log('🔄 Initializing periodic sync system...');
+  console.log('⏰ Sync interval set to:', SYNC_INTERVAL / 1000, 'seconds');
   
-  // Periodic sync every 30 seconds
-  setInterval(() => {
+  // Initial sync after 2 seconds (let page load first)
+  console.log('⏳ Scheduling initial sync in 2 seconds...');
+  setTimeout(() => {
+    console.log('🚀 Running initial sync...');
     syncQuotes();
+  }, 2000);
+  
+  // Periodic sync - check for new quotes from server every SYNC_INTERVAL
+  console.log('📅 Setting up periodic sync checks...');
+  syncIntervalId = setInterval(() => {
+    console.log('⏰ Periodic sync triggered');
+    console.log('📡 Checking for new quotes from server...');
+    syncQuotes(); // This function periodically checks the server
   }, SYNC_INTERVAL);
   
-  console.log('🔄 Automatic sync started (every', SYNC_INTERVAL / 1000, 'seconds)');
+  console.log('✅ Automatic periodic sync started');
+  console.log('🔄 Will check server every', SYNC_INTERVAL / 1000, 'seconds for new quotes');
+  
+  // Show notification about auto-sync
+  setTimeout(() => {
+    showNotification(
+      'Auto-Sync Enabled',
+      `Automatically checking server every ${SYNC_INTERVAL / 1000} seconds for updates.`,
+      'info'
+    );
+  }, 3000);
 }
 
 /**
@@ -531,6 +667,11 @@ function addQuote() {
   quotes.push(newQuote);
   
   saveQuotes(); // This will also call populateCategories()
+  
+  // Post new quote to server (demonstrates POST to mock API)
+  postQuoteToServer(newQuote).catch(error => {
+    console.log('Note: Server POST failed (expected with mock API)');
+  });
   
   newQuoteText.value = '';
   newQuoteCategory.value = '';
@@ -654,3 +795,4 @@ document.addEventListener('DOMContentLoaded', function() {
   console.log('✅ All event listeners set up successfully!');
   console.log('🔍 Current filter:', selectedCategory);
 });
+

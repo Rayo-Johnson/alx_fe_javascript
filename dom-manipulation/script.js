@@ -2,6 +2,18 @@
 // INITIAL QUOTES DATA
 // ============================================
 
+// Server URL for syncing (using JSONPlaceholder as mock API)
+const SERVER_URL = 'https://jsonplaceholder.typicode.com/posts';
+
+// Sync interval (30 seconds)
+const SYNC_INTERVAL = 30000;
+
+// Track last sync time
+let lastSyncTime = null;
+
+// Track if sync is in progress
+let isSyncing = false;
+
 const defaultQuotes = [
   { text: "The only way to do great work is to love what you do.", category: "Motivation" },
   { text: "Life is what happens when you're busy making other plans.", category: "Life" },
@@ -121,6 +133,304 @@ function loadLastSelectedCategory() {
     }
     
     console.log('📌 Restored last selected category:', savedCategory);
+  }
+}
+
+// ============================================
+// NOTIFICATION SYSTEM
+// ============================================
+
+/**
+ * Show notification to user
+ * @param {string} title - Notification title
+ * @param {string} message - Notification message
+ * @param {string} type - Notification type (success, info, warning, error)
+ */
+function showNotification(title, message, type = 'info') {
+  const container = document.getElementById('notificationContainer');
+  
+  const notification = document.createElement('div');
+  notification.className = `notification ${type}`;
+  
+  const icons = {
+    success: '✅',
+    info: 'ℹ️',
+    warning: '⚠️',
+    error: '❌'
+  };
+  
+  notification.innerHTML = `
+    <div class="notification-icon">${icons[type]}</div>
+    <div class="notification-content">
+      <div class="notification-title">${title}</div>
+      <div class="notification-message">${message}</div>
+    </div>
+    <button class="notification-close" onclick="this.parentElement.remove()">×</button>
+  `;
+  
+  container.appendChild(notification);
+  
+  // Auto remove after 5 seconds
+  setTimeout(() => {
+    if (notification.parentElement) {
+      notification.remove();
+    }
+  }, 5000);
+  
+  console.log(`🔔 Notification [${type}]:`, title, '-', message);
+}
+
+/**
+ * Update sync status bar
+ */
+function updateSyncStatus(status, text) {
+  const syncStatus = document.getElementById('syncStatus');
+  const syncText = syncStatus.querySelector('.sync-text');
+  const syncBtn = document.getElementById('manualSync');
+  
+  // Remove all status classes
+  syncStatus.className = 'sync-status';
+  
+  if (status) {
+    syncStatus.classList.add(status);
+  }
+  
+  syncText.textContent = text;
+  
+  // Disable button during sync
+  syncBtn.disabled = (status === 'syncing');
+  
+  console.log('🔄 Sync status:', text);
+}
+
+// ============================================
+// SERVER SYNC FUNCTIONS
+// ============================================
+
+/**
+ * Fetch quotes from server
+ * Simulates fetching data from a real API
+ */
+async function fetchQuotesFromServer() {
+  try {
+    console.log('📡 Fetching quotes from server...');
+    
+    // Fetch data from JSONPlaceholder (simulating server)
+    const response = await fetch(SERVER_URL);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const serverData = await response.json();
+    
+    // Convert server data to quote format
+    // We'll use posts as quotes (title as text, userId as category indicator)
+    const serverQuotes = serverData.slice(0, 10).map(post => ({
+      text: post.title,
+      category: getCategoryFromUserId(post.userId),
+      serverId: post.id,
+      serverTimestamp: Date.now()
+    }));
+    
+    console.log('✅ Fetched', serverQuotes.length, 'quotes from server');
+    return serverQuotes;
+    
+  } catch (error) {
+    console.error('❌ Error fetching from server:', error);
+    throw error;
+  }
+}
+
+/**
+ * Helper function to map userId to category
+ */
+function getCategoryFromUserId(userId) {
+  const categoryMap = {
+    1: 'Motivation',
+    2: 'Life',
+    3: 'Wisdom',
+    4: 'Success',
+    5: 'Dreams',
+    6: 'Inspiration',
+    7: 'Growth',
+    8: 'Innovation',
+    9: 'Leadership',
+    10: 'Creativity'
+  };
+  return categoryMap[userId] || 'General';
+}
+
+/**
+ * Sync local quotes with server quotes
+ * Implements conflict resolution strategy
+ */
+async function syncQuotes() {
+  if (isSyncing) {
+    console.log('⏳ Sync already in progress, skipping...');
+    return;
+  }
+  
+  isSyncing = true;
+  updateSyncStatus('syncing', 'Syncing with server...');
+  
+  try {
+    // Fetch quotes from server
+    const serverQuotes = await fetchQuotesFromServer();
+    
+    // Get local quotes
+    const localQuotes = [...quotes];
+    
+    // Detect conflicts and merge
+    const result = resolveConflicts(localQuotes, serverQuotes);
+    
+    if (result.conflicts.length > 0) {
+      showNotification(
+        'Conflicts Resolved',
+        `${result.conflicts.length} conflict(s) resolved. Server data took precedence.`,
+        'warning'
+      );
+      console.log('⚠️ Resolved', result.conflicts.length, 'conflicts');
+    }
+    
+    if (result.newQuotes.length > 0) {
+      showNotification(
+        'New Quotes Added',
+        `${result.newQuotes.length} new quote(s) synced from server.`,
+        'success'
+      );
+      console.log('✅ Added', result.newQuotes.length, 'new quotes from server');
+    }
+    
+    // Update local quotes with merged data
+    quotes = result.mergedQuotes;
+    saveQuotes();
+    
+    // Update UI
+    populateCategories();
+    if (quotes.length > 0 && document.getElementById('quoteDisplay').innerHTML.includes('empty-state')) {
+      showRandomQuote();
+    }
+    
+    // Update last sync time
+    lastSyncTime = new Date();
+    localStorage.setItem('lastSyncTime', lastSyncTime.toISOString());
+    
+    updateSyncStatus('success', `Last synced: ${formatTime(lastSyncTime)}`);
+    
+    if (result.conflicts.length === 0 && result.newQuotes.length === 0) {
+      showNotification(
+        'Up to Date',
+        'Your quotes are already in sync with the server.',
+        'info'
+      );
+    }
+    
+  } catch (error) {
+    console.error('❌ Sync failed:', error);
+    updateSyncStatus('error', 'Sync failed. Will retry...');
+    showNotification(
+      'Sync Failed',
+      'Could not connect to server. Will retry automatically.',
+      'error'
+    );
+  } finally {
+    isSyncing = false;
+  }
+}
+
+/**
+ * Resolve conflicts between local and server data
+ * Strategy: Server data takes precedence
+ */
+function resolveConflicts(localQuotes, serverQuotes) {
+  const conflicts = [];
+  const newQuotes = [];
+  const mergedQuotes = [...localQuotes];
+  
+  serverQuotes.forEach(serverQuote => {
+    // Check if quote exists locally (by comparing text)
+    const localIndex = mergedQuotes.findIndex(
+      local => normalizeText(local.text) === normalizeText(serverQuote.text)
+    );
+    
+    if (localIndex !== -1) {
+      // Quote exists locally - check for conflicts
+      const localQuote = mergedQuotes[localIndex];
+      
+      if (localQuote.category !== serverQuote.category) {
+        // Conflict detected: categories differ
+        conflicts.push({
+          text: serverQuote.text,
+          localCategory: localQuote.category,
+          serverCategory: serverQuote.category
+        });
+        
+        // Server takes precedence
+        mergedQuotes[localIndex] = {
+          ...localQuote,
+          ...serverQuote
+        };
+      }
+    } else {
+      // New quote from server
+      newQuotes.push(serverQuote);
+      mergedQuotes.push(serverQuote);
+    }
+  });
+  
+  return {
+    mergedQuotes,
+    conflicts,
+    newQuotes
+  };
+}
+
+/**
+ * Normalize text for comparison
+ */
+function normalizeText(text) {
+  return text.toLowerCase().trim().replace(/[^\w\s]/g, '');
+}
+
+/**
+ * Format time for display
+ */
+function formatTime(date) {
+  const now = new Date();
+  const diff = Math.floor((now - date) / 1000); // seconds
+  
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} hours ago`;
+  return date.toLocaleString();
+}
+
+/**
+ * Start automatic periodic sync
+ */
+function startPeriodicSync() {
+  // Initial sync
+  setTimeout(() => {
+    syncQuotes();
+  }, 2000); // Wait 2 seconds after page load
+  
+  // Periodic sync every 30 seconds
+  setInterval(() => {
+    syncQuotes();
+  }, SYNC_INTERVAL);
+  
+  console.log('🔄 Automatic sync started (every', SYNC_INTERVAL / 1000, 'seconds)');
+}
+
+/**
+ * Load last sync time from localStorage
+ */
+function loadLastSyncTime() {
+  const saved = localStorage.getItem('lastSyncTime');
+  if (saved) {
+    lastSyncTime = new Date(saved);
+    updateSyncStatus('', `Last synced: ${formatTime(lastSyncTime)}`);
   }
 }
 

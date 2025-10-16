@@ -235,12 +235,185 @@
       border-color: #d39e00;
       box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.2);
     }
+
+    .sync-status {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 15px 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+
+    .sync-status.syncing {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    }
+
+    .sync-status.success {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    }
+
+    .sync-status.error {
+      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+    }
+
+    .sync-icon {
+      font-size: 1.5em;
+      margin-right: 10px;
+      animation: rotate 2s linear infinite paused;
+    }
+
+    .sync-status.syncing .sync-icon {
+      animation-play-state: running;
+    }
+
+    @keyframes rotate {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .sync-text {
+      flex: 1;
+      font-weight: 600;
+    }
+
+    .sync-btn {
+      background: rgba(255, 255, 255, 0.3);
+      color: white;
+      border: 2px solid white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s;
+      width: auto;
+      margin: 0;
+    }
+
+    .sync-btn:hover {
+      background: white;
+      color: #667eea;
+      transform: translateY(-2px);
+    }
+
+    .sync-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #notificationContainer {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10000;
+      max-width: 400px;
+    }
+
+    .notification {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      border-left: 5px solid;
+      animation: slideInRight 0.3s ease, slideOutRight 0.3s ease 4.7s;
+      display: flex;
+      align-items: start;
+      gap: 15px;
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    @keyframes slideOutRight {
+      from {
+        transform: translateX(0);
+        opacity: 1;
+      }
+      to {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+    }
+
+    .notification.success {
+      border-left-color: #28a745;
+    }
+
+    .notification.info {
+      border-left-color: #17a2b8;
+    }
+
+    .notification.warning {
+      border-left-color: #ffc107;
+    }
+
+    .notification.error {
+      border-left-color: #dc3545;
+    }
+
+    .notification-icon {
+      font-size: 1.5em;
+      flex-shrink: 0;
+    }
+
+    .notification-content {
+      flex: 1;
+    }
+
+    .notification-title {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #333;
+    }
+
+    .notification-message {
+      color: #666;
+      font-size: 0.9em;
+      line-height: 1.4;
+    }
+
+    .notification-close {
+      background: none;
+      border: none;
+      font-size: 1.2em;
+      cursor: pointer;
+      color: #999;
+      padding: 0;
+      width: auto;
+      margin: 0;
+      flex-shrink: 0;
+    }
+
+    .notification-close:hover {
+      color: #333;
+      transform: none;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>✨ Dynamic Quote Generator</h1>
-    <p class="subtitle">Enhanced with Local Storage & JSON Import/Export</p>
+    <p class="subtitle">Enhanced with Server Sync & Conflict Resolution</p>
+    
+    <!-- Sync Status Bar -->
+    <div class="sync-status" id="syncStatus">
+      <span class="sync-icon">🔄</span>
+      <span class="sync-text">Ready to sync</span>
+      <button class="sync-btn" id="manualSync">Sync Now</button>
+    </div>
     
     <!-- Statistics Display -->
     <div class="stats">
@@ -308,6 +481,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Notification Container -->
+  <div id="notificationContainer"></div>
 
   <!-- Link to JavaScript file -->
   <script src="script.js"></script>

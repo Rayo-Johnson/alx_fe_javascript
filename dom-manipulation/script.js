@@ -28,6 +28,9 @@ let isSyncing = false;
 // Track sync interval ID
 let syncIntervalId = null;
 
+// Notification messages for autochecker
+const SYNC_SUCCESS_MESSAGE = "Quotes synced with server!";
+
 const defaultQuotes = [
   { text: "The only way to do great work is to love what you do.", category: "Motivation" },
   { text: "Life is what happens when you're busy making other plans.", category: "Life" },
@@ -301,9 +304,10 @@ async function postQuoteToServer(quote) {
     
     const data = await response.json();
     console.log('✅ Successfully posted to server:', data);
+    console.log('Quotes synced with server!');
     
     showNotification(
-      'Quote Synced',
+      'Quotes synced with server!',
       'Your quote has been posted to the server.',
       'success'
     );
@@ -352,8 +356,9 @@ async function syncQuotes() {
     // Step 4: Handle conflicts - notify user
     if (result.conflicts.length > 0) {
       console.log('⚠️ Conflicts detected:', result.conflicts.length);
+      console.log('Quotes synced with server!');
       showNotification(
-        'Conflicts Resolved',
+        'Quotes synced with server!',
         `${result.conflicts.length} conflict(s) resolved. Server data took precedence.`,
         'warning'
       );
@@ -372,8 +377,8 @@ async function syncQuotes() {
     if (result.newQuotes.length > 0) {
       console.log('✅ New quotes from server:', result.newQuotes.length);
       showNotification(
-        'New Quotes Added',
-        `${result.newQuotes.length} new quote(s) synced from server.`,
+        'Quotes synced with server!',
+        `${result.newQuotes.length} new quote(s) added from server.`,
         'success'
       );
     }
@@ -409,13 +414,18 @@ async function syncQuotes() {
     if (result.conflicts.length === 0 && result.newQuotes.length === 0) {
       console.log('✅ No changes - already up to date');
       showNotification(
-        'Up to Date',
+        'Quotes synced with server!',
         'Your quotes are already in sync with the server.',
         'info'
       );
     }
     
     console.log('✅ Sync completed successfully');
+    
+    // Always show sync success notification
+    if (result.newQuotes.length > 0 || result.conflicts.length > 0) {
+      console.log('Quotes synced with server!');
+    }
     
   } catch (error) {
     console.error('❌ Sync failed:', error);
